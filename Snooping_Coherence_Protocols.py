@@ -84,9 +84,14 @@ class Bus:
 
     wait_data_event = False
 
+    nodes_rejected_times = {}
+    nodes_rejected_times_test = {}
+
     def connect(self, nodes):
         for node in nodes:
             self.connected_nodes.append(node)
+            self.nodes_rejected_times[node] = 0
+            self.nodes_rejected_times_test[node.name()] = 0
             node.bus = self
 
     def name(self):
@@ -109,6 +114,14 @@ class Bus:
                 result = False
         else:
             result = False
+        
+        if result:
+            self.nodes_rejected_times[event.requestor] = 0
+            self.nodes_rejected_times_test[event.requestor.name()] = 0
+        else:
+            self.nodes_rejected_times[event.requestor] += 1
+            self.nodes_rejected_times_test[event.requestor.name()] += 1
+
         print_driver.print(f"bus recv event", f"event is {event.print()}", f"recv result is {result}", Flag="Bus")
         return result
     
@@ -136,6 +149,12 @@ class Bus:
             for node in data_event.data_recvers:
                 node.process_req_event(data_event)
             self.wait_data_event = False
+
+        sorted_nodes = sorted(self.nodes_rejected_times.keys(), key=lambda node: self.nodes_rejected_times[node], reverse=True)
+        sorted_nodes_test = sorted(self.nodes_rejected_times_test.keys(), key=lambda node: self.nodes_rejected_times_test[node], reverse=True)
+        print(sorted_nodes_test, self.nodes_rejected_times_test)
+        for node in sorted_nodes:
+            node.resend_event()
 
 class Cache:
     state = CacheState.I
@@ -384,38 +403,37 @@ class Cache:
                 print_driver.print_snh(self.name(), event, self.state)
 
     def resend_event(self):
-        if self.retry_send_event.type == EventType.GetS and self.state == CacheState.I:
-            send_done = self.bus.send_req_event(self.retry_send_event)
-            if send_done:
-                self.retry_send_event = None
-                self.state = CacheState.ISD
-            return
+        if not self.retry_send_event is None:
+            if self.retry_send_event.type == EventType.GetS and self.state == CacheState.I:
+                send_done = self.bus.send_req_event(self.retry_send_event)
+                if send_done:
+                    self.retry_send_event = None
+                    self.state = CacheState.ISD
+                return
 
-        if self.retry_send_event.type == EventType.GetM and self.state == CacheState.I:
-            send_done = self.bus.send_req_event(self.retry_send_event)
-            if send_done:
-                self.retry_send_event = None
-                self.state = CacheState.IMD
-            return
+            if self.retry_send_event.type == EventType.GetM and self.state == CacheState.I:
+                send_done = self.bus.send_req_event(self.retry_send_event)
+                if send_done:
+                    self.retry_send_event = None
+                    self.state = CacheState.IMD
+                return
 
-        if self.retry_send_event.type == EventType.GetM and self.state == CacheState.S:
-            send_done = self.bus.send_req_event(self.retry_send_event)
-            if send_done:
-                self.retry_send_event = None
-                self.state = CacheState.SMD
-            return
+            if self.retry_send_event.type == EventType.GetM and self.state == CacheState.S:
+                send_done = self.bus.send_req_event(self.retry_send_event)
+                if send_done:
+                    self.retry_send_event = None
+                    self.state = CacheState.SMD
+                return
 
-        if self.retry_send_event.type == EventType.PutM and self.state == CacheState.M:
-            send_done = self.bus.send_req_event(self.retry_send_event)
-            if send_done:
-                self.retry_send_event = None
-                self.state = CacheState.I
-            return
+            if self.retry_send_event.type == EventType.PutM and self.state == CacheState.M:
+                send_done = self.bus.send_req_event(self.retry_send_event)
+                if send_done:
+                    self.retry_send_event = None
+                    self.state = CacheState.I
+                return
 
     def tick_run(self):
         print_driver.print(self.name(), self.state, self.data, self.data_valid, self.retry_send_event is None, Flag="Cache")
-        if not self.retry_send_event is None:
-            self.resend_event()
         if self.core_stall_event and self.core_stall_event.type == EventType.Replacement:
             self.process_req_event(self.core_stall_event)
 
@@ -505,10 +523,16 @@ class LLC:
                 raise Exception("Should not happen")        
                 exit()
 
+    def resend_event(self):
+        pass
+
 class Core:
     load_data = 0
     store_data = 0
     
+    verity_load_times = 0
+    verity_store_times = 0
+
     wait_event = None
 
     cache = None
@@ -549,7 +573,8 @@ class Core:
                 elif event.type == EventType.Store:
                     self.data_driver.verify_store(self)
             else:
-                self.wait_event = event
+                if event.type != EventType.Replacement:
+                    self.wait_event = event
 
         else:
             print_driver.print(f"{self.name()} wait resp event from cache", Flag="Core")
@@ -614,11 +639,13 @@ class DataDriver:
             exit()
         else:
             print_driver.print(f"verify: Data match: {core.name()} load {core.load_data}", Flag="Verify")
+        core.verity_load_times += 1
     
     def verify_store(self, core):
         self.verify_data = core.store_data
         self.verify_data_valid = True
         print_driver.print(f"verify: Data update: {core.name()} store {core.store_data}", Flag="Verify")
+        core.verity_store_times += 1
 
 class TickDriver:
     tick = 0
@@ -702,10 +729,14 @@ data_driver.connect([core0, core1, core2])
 tick_driver.add_objects([bus, core0, core1, core2, cache0, cache1, cache2])
 print_driver.add_tick_driver(tick_driver)
 print_driver.connect([core0, core1, core2, cache0, cache1, cache2, bus, llc, data_driver])
-print_driver.add_flags(["Verify"])
+print_driver.add_flags(["Verify", "Core", "Bus"])
 
 data_driver.data_init(0)
 llc.data_init(0)
 
-tick_driver.max_tick = 1024
+tick_driver.max_tick = 4096
 tick_driver.run()
+
+print("core0", core0.verity_load_times, core0.verity_store_times, core0.verity_load_times + core0.verity_store_times)
+print("core1", core1.verity_load_times, core1.verity_store_times, core1.verity_load_times + core1.verity_store_times)
+print("core2", core2.verity_load_times, core2.verity_store_times, core2.verity_load_times + core2.verity_store_times)
