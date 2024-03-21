@@ -1,4 +1,3 @@
-
 class DataDriver:
     drive_data = 0
     verify_data = 0
@@ -73,6 +72,7 @@ class TickDriver:
         print(f"simulation finished @ {self.tick} Ticks")
         self.excel_driver.ptrace(self, f"{self.tick}")
 
+
 class PrintDriver:
 
     tick_driver = None
@@ -113,7 +113,9 @@ class PrintDriver:
     def print_snh(self, node_name, event, state):  
         self.print(f"ERROR: should not happen: From ({self.enum_str(event.cmd)}@{event.requestor.name()}) To ({self.enum_str(state)}@{node_name})")
 
+
 import openpyxl  
+
 
 class ExcelManager:  
     def __init__(self, path):  
@@ -137,6 +139,7 @@ class ExcelManager:
     def write_cell(self, sheet_name, row, column, value):  
         sheet = self.get_sheet(sheet_name)  
         sheet.cell(row=row, column=column).value = value  
+
 
 class ExcelDriver(ExcelManager):
     def __init__(self, path, cache_states, cache_event_cmds, llc_states, llc_event_cmds):

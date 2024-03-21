@@ -1,18 +1,18 @@
-from sim_enum import *
-from sim_drivers import *
-from event import *
-from node import *
-from bus import *
-import traceback
-import random  
+import sys
+sys.path.append("../")
+
+from cacheCoherenceSimulate.sim_drivers import *
+from NARAT_bus import *
+from nodes.MSI_node import *
+from nodes.Core_node import *
 
 core0 = CoreNode(0)
 core1 = CoreNode(1)
 core2 = CoreNode(2)
-cache0 = NARAT_Cache(0)
-cache1 = NARAT_Cache(1)
-cache2 = NARAT_Cache(2)
-llc = NARAT_LLC(3)
+cache0 = NARAT_MSI_Cache(0)
+cache1 = NARAT_MSI_Cache(1)
+cache2 = NARAT_MSI_Cache(2)
+llc = NARAT_MSI_LLC(3)
 arat_bus = NARAT_Bus()
 
 core0.connect_cache(cache0)
